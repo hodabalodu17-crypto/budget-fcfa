@@ -80,7 +80,15 @@ export const useBudgetStore = create(
         return { success: true, amount: solde }
       },
 
-      // ---- Getters (computed)
+      // ---- DELETE a single transfer ← NOUVEAU
+      deleteTransfer: (transferKey) => {
+        const { savings } = get()
+        set({
+          savings: savings.filter(s => s.key !== transferKey)
+        })
+      },
+
+      // ---- Getters
       getMonthData: (month, year) => {
         const key = makeKey(month, year)
         return get().months[key] || defaultMonthData()
@@ -103,7 +111,7 @@ export const useBudgetStore = create(
         return get().savings.reduce((s, e) => s + e.amount, 0)
       },
 
-      // ---- Reset
+      // ---- Reset ALL ← DÉJÀ EXISTANT
       resetAll: () => set({ months: {}, savings: [] }),
     }),
     {
