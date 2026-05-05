@@ -6,19 +6,21 @@ export default function HomeScreen({ onNavigate }) {
   const {
     currentMonth, currentYear,
     getMonthData, getTotalExpenses, getSolde, getTotalSavings,
-    setSalary, deleteExpense, transferToSavings,
+    setSalary, deleteExpense, transferToSavings, borrowFromSavings,
   } = useBudgetStore()
 
   const [showSalaryModal, setShowSalaryModal] = useState(false)
+  const [showBorrowModal, setShowBorrowModal] = useState(false)
   const [salaryInput, setSalaryInput] = useState('')
+  const [borrowInput, setBorrowInput] = useState('')
   const [toast, setToast] = useState(null)
 
   const monthData = getMonthData(currentMonth, currentYear)
   const spent = getTotalExpenses(currentMonth, currentYear)
   const solde = getSolde(currentMonth, currentYear)
   const totalSavings = getTotalSavings()
-  const pct = monthData.salary > 0 ? Math.min(100, Math.round(spent / monthData.salary * 100)) : 0
-
+  const borrowed = monthData.borrowed || 0
+  const pct = monthData.salary > 0 ? Math.min(100, Math.round(spent / (monthData.salary + borrowed) * 100)) : 0
   const progressColor = pct >= 90 ? '#D84040' : pct >= 75 ? '#B87800' : '#1A6B4A'
 
   function showToast(msg) {
@@ -41,7 +43,26 @@ export default function HomeScreen({ onNavigate }) {
     else { showToast(`💰 ${fmt(result.amount)} transféré en épargne !`); onNavigate('epargne') }
   }
 
+  function handleBorrow() {
+    const v = parseFloat(borrowInput)
+    if (!v || v <= 0) { showToast('⚠️ Montant invalide'); return }
+    const result = borrowFromSavings(v)
+    if (result.error) { showToast('⚠️ ' + result.error); return }
+    setShowBorrowModal(false)
+    setBorrowInput('')
+    showToast(`✅ ${fmt(result.amount)} empruntés depuis l'épargne !`)
+  }
+
   const recent = [...(monthData.expenses || [])].reverse().slice(0, 5)
+
+  const modalOverlay = {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 150,
+    display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
+  }
+  const modalBox = {
+    background: '#fff', borderRadius: '20px 20px 0 0', padding: 24,
+    width: '100%', maxWidth: 430
+  }
 
   return (
     <div style={{ padding: 16 }}>
@@ -58,7 +79,8 @@ export default function HomeScreen({ onNavigate }) {
       {/* HEADER CARD */}
       <div style={{
         background: 'linear-gradient(135deg, #1A6B4A 0%, #0D4A30 100%)',
-        borderRadius: 20, padding: 20, color: '#fff', marginBottom: 14, position: 'relative', overflow: 'hidden'
+        borderRadius: 20, padding: 20, color: '#fff', marginBottom: 14,
+        position: 'relative', overflow: 'hidden'
       }}>
         <div style={{ position: 'absolute', top: -40, right: -40, width: 130, height: 130, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
         <p style={{ fontSize: 12, opacity: 0.75, marginBottom: 2 }}>
@@ -66,6 +88,7 @@ export default function HomeScreen({ onNavigate }) {
         </p>
         <p style={{ fontSize: 13, opacity: 0.8, marginBottom: 16 }}>
           Salaire : {monthData.salary > 0 ? fmt(monthData.salary) : '—'}
+          {borrowed > 0 && <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.8 }}>+ {fmt(borrowed)} empruntés</span>}
         </p>
         <p style={{ fontSize: 11, opacity: 0.65, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Solde restant</p>
         <p style={{ fontFamily: 'var(--mono)', fontSize: 34, fontWeight: 500, margin: '4px 0 16px' }}>
@@ -83,14 +106,50 @@ export default function HomeScreen({ onNavigate }) {
         </div>
       </div>
 
-      {/* ALERTE */}
-      {pct >= 80 && (
+      {/* ALERTE budget */}
+      {pct >= 80 && solde > 0 && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           background: '#FFF8E6', border: '0.5px solid #B87800', borderRadius: 10,
           padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#B87800'
         }}>
-          ⚠️ Attention : vous avez dépensé {pct}% de votre salaire !
+          ⚠️ Attention : vous avez dépensé {pct}% de votre budget !
+        </div>
+      )}
+
+      {/* ALERTE solde nul + bouton emprunt */}
+      {solde <= 0 && totalSavings > 0 && (
+        <div style={{
+          background: '#FFF3E0', border: '1px solid #E65100', borderRadius: 12,
+          padding: 14, marginBottom: 12
+        }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#E65100', marginBottom: 4 }}>
+            💸 Solde épuisé
+          </p>
+          <p style={{ fontSize: 12, color: '#BF360C', marginBottom: 10 }}>
+            Votre solde est nul. Vous pouvez emprunter depuis votre épargne ({fmt(totalSavings)} disponibles).
+          </p>
+          <button
+            onClick={() => setShowBorrowModal(true)}
+            style={{
+              width: '100%', padding: '11px', background: '#E65100', color: '#fff',
+              border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer'
+            }}
+          >
+            🏦 Emprunter depuis l'épargne
+          </button>
+        </div>
+      )}
+
+      {/* Emprunt actif badge */}
+      {borrowed > 0 && (
+        <div style={{
+          background: '#FFF3E0', border: '0.5px solid #E65100', borderRadius: 10,
+          padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#E65100',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        }}>
+          <span>🏦 Emprunt en cours</span>
+          <span style={{ fontWeight: 600 }}>{fmt(borrowed)}</span>
         </div>
       )}
 
@@ -137,18 +196,26 @@ export default function HomeScreen({ onNavigate }) {
       <button onClick={handleTransfer} style={{
         width: '100%', padding: 12, borderRadius: 10,
         background: 'transparent', border: '0.5px solid #1A6B4A',
-        color: '#1A6B4A', fontSize: 13, fontWeight: 500
+        color: '#1A6B4A', fontSize: 13, fontWeight: 500, cursor: 'pointer'
       }}>
         💾 Transférer le solde en épargne
       </button>
 
+      {/* Bouton emprunt si solde > 0 aussi */}
+      {solde > 0 && totalSavings > 0 && (
+        <button onClick={() => setShowBorrowModal(true)} style={{
+          width: '100%', padding: 12, borderRadius: 10, marginTop: 10,
+          background: 'transparent', border: '0.5px solid #E65100',
+          color: '#E65100', fontSize: 13, fontWeight: 500, cursor: 'pointer'
+        }}>
+          🏦 Emprunter depuis l'épargne
+        </button>
+      )}
+
       {/* SALARY MODAL */}
       {showSalaryModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 150,
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
-        }}>
-          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', padding: 24, width: '100%', maxWidth: 430 }}>
+        <div style={modalOverlay}>
+          <div style={modalBox}>
             <div style={{ width: 36, height: 4, background: '#E5E7EB', borderRadius: 999, margin: '0 auto 20px' }} />
             <p style={{ fontSize: 16, fontWeight: 500, marginBottom: 16 }}>💼 Salaire du mois</p>
             <label style={{ fontSize: 11, color: '#9CA3AF', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Montant (FCFA)</label>
@@ -161,11 +228,44 @@ export default function HomeScreen({ onNavigate }) {
               autoFocus
               style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '0.5px solid #E5E7EB', fontSize: 16, marginBottom: 16, outline: 'none' }}
             />
-            <button onClick={handleSaveSalary} style={{ width: '100%', padding: 13, borderRadius: 10, background: '#1A6B4A', color: '#fff', border: 'none', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Confirmer</button>
-            <button onClick={() => setShowSalaryModal(false)} style={{ width: '100%', padding: 12, borderRadius: 10, background: 'transparent', color: '#1A6B4A', border: '0.5px solid #1A6B4A', fontSize: 14 }}>Annuler</button>
+            <button onClick={handleSaveSalary} style={{ width: '100%', padding: 13, borderRadius: 10, background: '#1A6B4A', color: '#fff', border: 'none', fontSize: 14, fontWeight: 500, marginBottom: 8, cursor: 'pointer' }}>Confirmer</button>
+            <button onClick={() => setShowSalaryModal(false)} style={{ width: '100%', padding: 12, borderRadius: 10, background: 'transparent', color: '#1A6B4A', border: '0.5px solid #1A6B4A', fontSize: 14, cursor: 'pointer' }}>Annuler</button>
           </div>
         </div>
       )}
+
+      {/* BORROW MODAL */}
+      {showBorrowModal && (
+        <div style={modalOverlay}>
+          <div style={modalBox}>
+            <div style={{ width: 36, height: 4, background: '#E5E7EB', borderRadius: 999, margin: '0 auto 20px' }} />
+            <p style={{ fontSize: 16, fontWeight: 500, marginBottom: 4 }}>🏦 Emprunter depuis l'épargne</p>
+            <p style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 16 }}>
+              Épargne disponible : <strong style={{ color: '#1A6B4A' }}>{fmt(totalSavings)}</strong>
+            </p>
+            <label style={{ fontSize: 11, color: '#9CA3AF', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Montant à emprunter (FCFA)</label>
+            <input
+              type="number"
+              value={borrowInput}
+              onChange={e => setBorrowInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleBorrow()}
+              placeholder="ex : 50000"
+              autoFocus
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '0.5px solid #E5E7EB', fontSize: 16, marginBottom: 6, outline: 'none' }}
+            />
+            <p style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 16 }}>
+              ⚠️ Ce montant sera déduit de votre épargne et ajouté à votre solde du mois.
+            </p>
+            <button onClick={handleBorrow} style={{ width: '100%', padding: 13, borderRadius: 10, background: '#E65100', color: '#fff', border: 'none', fontSize: 14, fontWeight: 500, marginBottom: 8, cursor: 'pointer' }}>
+              Confirmer l'emprunt
+            </button>
+            <button onClick={() => setShowBorrowModal(false)} style={{ width: '100%', padding: 12, borderRadius: 10, background: 'transparent', color: '#E65100', border: '0.5px solid #E65100', fontSize: 14, cursor: 'pointer' }}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
@@ -185,7 +285,7 @@ function ExpenseItem({ exp, onDelete }) {
         <p style={{ fontSize: 11, color: '#9CA3AF' }}>{exp.date} · {cat.label}</p>
       </div>
       <p style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 500, color: '#D84040', whiteSpace: 'nowrap' }}>-{fmt(exp.amount)}</p>
-      <button onClick={() => onDelete(exp.id)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: 16, padding: '0 4px', opacity: 0.5 }}>✕</button>
+      <button onClick={() => onDelete(exp.id)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: 16, padding: '0 4px', opacity: 0.5, cursor: 'pointer' }}>✕</button>
     </div>
   )
 }
